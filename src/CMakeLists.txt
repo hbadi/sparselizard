@@ -41,7 +41,7 @@ ConfigureSLEPC(sparselizard)
 # find_package(Threads)
 # target_link_libraries(sparselizard PUBLIC ${CMAKE_THREAD_LIBS_INIT})
 
-if(NOT (${MUMPS_FOUND} AND ${PETSC_FOUND} AND ${SLEPC_FOUND}))
+if(NOT (${PETSC_FOUND} AND ${SLEPC_FOUND}))
     message(FATAL_ERROR "\nAt least one required package (petsc, slepc) not found.")
 endif()
 
