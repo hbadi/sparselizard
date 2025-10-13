@@ -1705,7 +1705,7 @@ std::shared_ptr<rawfield> rawfield::comp(int component)
         log.msg() << "Error in 'rawfield' object: cannot get a component for vector fields with no subfields (e.g. hcurl)" << std::endl;
         log.error();
     }
-    if (component > mysubfields.size())
+    if (component >= mysubfields.size())
     {
         logs log;
         log.msg() << "Error in 'rawfield' object: cannot get component " << component << " from a " << mysubfields.size() << " components field" << std::endl;
