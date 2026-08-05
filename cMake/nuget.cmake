@@ -24,11 +24,12 @@
 # on SPARSELIZARD_NUGET_MKL_RUNTIME.
 
 function(sparselizard_stage_nuget _stage)
-    cmake_parse_arguments(SN "" "VERSION" "RUNTIME_DIRS;PETSC_INCLUDE_DIRS" ${ARGN})
+    cmake_parse_arguments(SN "" "VERSION;DEBUG_BUILD_DIR" "RUNTIME_DIRS;PETSC_INCLUDE_DIRS" ${ARGN})
 
     file(REMOVE_RECURSE "${_stage}")
-    file(MAKE_DIRECTORY "${_stage}/build/native/lib/x64")
-    file(MAKE_DIRECTORY "${_stage}/build/native/bin/x64")
+    file(MAKE_DIRECTORY "${_stage}/build/native/lib/x64/Release")
+    file(MAKE_DIRECTORY "${_stage}/build/native/bin/x64/common")
+    file(MAKE_DIRECTORY "${_stage}/build/native/bin/x64/Release")
 
     # --- headers and import library -------------------------------------------
     file(GLOB _headers "${SPARSELIZARD_INCLUDE_STAGE_DIR}/*.h")
@@ -100,36 +101,96 @@ function(sparselizard_stage_nuget _stage)
     # The same library can sit in two of those directories, for instance a
     # mumps.dll copied next to the build output and the one in its own install
     # tree. Keep the first, so the order of SPARSELIZARD_RUNTIME_PATHS decides.
-    set(_packed "")
+    # sparselizard's own library is configuration dependent and goes elsewhere;
+    # everything here is shared by both variants, so it is packed once.
+    set(_packed "sparselizard.dll")
     foreach(_f IN LISTS _dlls)
         get_filename_component(_n "${_f}" NAME)
         if(_n IN_LIST _packed)
             continue()
         endif()
         list(APPEND _packed "${_n}")
-        message(STATUS "  packing ${_n}")
-        file(COPY "${_f}" DESTINATION "${_stage}/build/native/bin/x64")
+        message(STATUS "  packing common/${_n}")
+        file(COPY "${_f}" DESTINATION "${_stage}/build/native/bin/x64/common")
     endforeach()
 
-    # --- import library --------------------------------------------------------
-    set(_implib "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}/sparselizard.lib")
-    if(EXISTS "${_implib}")
-        file(COPY "${_implib}" DESTINATION "${_stage}/build/native/lib/x64")
+    # --- the two variants of sparselizard itself -------------------------------
+    # An application and sparselizard exchange std::string and std::vector, and
+    # the debug and release C runtimes lay those out differently, so a Debug
+    # application needs a sparselizard built against the debug runtime. Only
+    # sparselizard is doubled: PETSc, SLEPc, MUMPS and MKL are reached through C
+    # interfaces, across which no C++ object travels, and one release build of
+    # each serves both.
+    #
+    # The .pdb travels with each. Without it a call stack passing through the
+    # library has no symbols and no source, which is most of the point of a Debug
+    # configuration.
+    function(_sp_pack_variant _config _bindir _libdir)
+        # A build against the debug C runtime also pulls the debug build of the
+        # Intel compiler runtime, under a different name, so those cannot sit in
+        # the shared directory. Missing, they give 0xC0000135 at start-up naming
+        # no module.
+        if(_config STREQUAL "Debug")
+            foreach(_n libmmdd.dll libifcoremdd.dll)
+                set(_hit "")
+                foreach(_d IN LISTS SN_RUNTIME_DIRS)
+                    if(EXISTS "${_d}/${_n}")
+                        set(_hit "${_d}/${_n}")
+                        break()
+                    endif()
+                endforeach()
+                if(_hit)
+                    file(COPY "${_hit}" DESTINATION "${_stage}/build/native/bin/x64/${_config}")
+                    message(STATUS "  packing ${_config}/${_n}")
+                else()
+                    message(WARNING "Not found, debug variant will be incomplete: ${_n}")
+                endif()
+            endforeach()
+        endif()
+
+        set(_dll "${_bindir}/sparselizard.dll")
+        set(_imp "${_libdir}/sparselizard.lib")
+        if(NOT EXISTS "${_dll}" OR NOT EXISTS "${_imp}")
+            message(FATAL_ERROR
+                "No sparselizard.dll and .lib for the ${_config} variant under "
+                "${_bindir} and ${_libdir}. Build it before staging the package.")
+        endif()
+        file(COPY "${_dll}" DESTINATION "${_stage}/build/native/bin/x64/${_config}")
+        file(COPY "${_imp}" DESTINATION "${_stage}/build/native/lib/x64/${_config}")
+        message(STATUS "  packing ${_config}/sparselizard.dll")
+        if(EXISTS "${_bindir}/sparselizard.pdb")
+            file(COPY "${_bindir}/sparselizard.pdb"
+                 DESTINATION "${_stage}/build/native/bin/x64/${_config}")
+            message(STATUS "  packing ${_config}/sparselizard.pdb")
+        else()
+            message(WARNING
+                "No sparselizard.pdb for the ${_config} variant. A stack passing "
+                "through the library will have no symbols.")
+        endif()
+    endfunction()
+
+    _sp_pack_variant(Release "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}")
+    if(SN_DEBUG_BUILD_DIR)
+        _sp_pack_variant(Debug "${SN_DEBUG_BUILD_DIR}/bin" "${SN_DEBUG_BUILD_DIR}/lib")
+        set(_two_config TWO_CONFIG)
     else()
-        message(FATAL_ERROR
-            "No sparselizard.lib in ${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}. "
-            "Build the library before staging the package.")
+        message(WARNING
+            "No debug build given, the package will carry the release variant only "
+            "and an application will have to build its Debug configuration against "
+            "the release C runtime. Point SPARSELIZARD_NUGET_DEBUG_DIR at a build "
+            "tree configured with -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDebugDLL.")
+        set(_two_config "")
     endif()
 
     # --- property sheet --------------------------------------------------------
     # Paths relative to the sheet, so the package works wherever NuGet unpacks it.
     include("${CMAKE_SOURCE_DIR}/cMake/writepropertysheet.cmake")
     sparselizard_write_property_sheet("${_stage}/build/native/sparselizard.props"
-        RELATIVE_TO_SHEET
+        RELATIVE_TO_SHEET ${_two_config}
         INCLUDE_DIRS "include;${_petsc_inc_names}"
-        LIBRARY_DIRS "lib/x64"
+        LIBRARY_DIRS "lib/x64/$(SparselizardConfig)"
         LIBRARIES    "sparselizard.lib"
-        RUNTIME_DIRS "bin/x64")
+        RUNTIME_DIRS "bin/x64/common;bin/x64/$(SparselizardConfig)")
 
     # --- targets ---------------------------------------------------------------
     # The shared libraries land next to the executable, which is the one place
@@ -149,8 +210,13 @@ function(sparselizard_stage_nuget _stage)
     <SparselizardExternalApplied>true</SparselizardExternalApplied>
   </PropertyGroup>
 
+  <!-- The shared part, then the variant matching this configuration. The .pdb
+       comes along: without it a call stack passing through the library has no
+       symbols and no source. -->
   <ItemGroup>
-    <SparselizardRuntime Include=\"\$(MSBuildThisFileDirectory)bin\\x64\\*.dll\" />
+    <SparselizardRuntime Include=\"\$(MSBuildThisFileDirectory)bin\\x64\\common\\*.dll\" />
+    <SparselizardRuntime Include=\"\$(MSBuildThisFileDirectory)bin\\x64\\\$(SparselizardConfig)\\*.dll\" />
+    <SparselizardRuntime Include=\"\$(MSBuildThisFileDirectory)bin\\x64\\\$(SparselizardConfig)\\*.pdb\" />
   </ItemGroup>
   <Target Name=\"SparselizardCopyRuntime\" AfterTargets=\"Build\"
           Inputs=\"@(SparselizardRuntime)\"
@@ -177,7 +243,7 @@ function(sparselizard_stage_nuget _stage)
     <projectUrl>http://sparselizard.org</projectUrl>
     <license type=\"expression\">GPL-2.0-or-later</license>
     <requireLicenseAcceptance>true</requireLicenseAcceptance>
-    <description>General purpose finite element library for multiphysics simulation, x64, MSVC. Self-contained: adding this package sets the include directories, the compiler settings PETSc requires, the link line, and copies every shared library it needs next to the executable, PETSc, SLEPc, MUMPS and oneMKL included. The only prerequisite is the Visual C++ redistributable. Needs the release C runtime including in Debug builds: sparselizard exchanges std::string and std::vector with the application, which the debug CRT lays out differently.</description>
+    <description>General purpose finite element library for multiphysics simulation, x64, MSVC. Self-contained: adding this package sets the include directories, the compiler settings PETSc requires, the link line, and copies every shared library it needs next to the executable, PETSc, SLEPc, MUMPS and oneMKL included, with symbols. Release and Debug builds of sparselizard both ship and are selected from the consumer's configuration, so a Debug application keeps the debug C runtime and its iterator and heap checks. The only prerequisite is the Visual C++ redistributable, and Visual Studio itself for the debug runtime.</description>
     <copyright>See the COPYRIGHT file</copyright>
     <tags>native finite-element fem multiphysics petsc slepc</tags>
   </metadata>

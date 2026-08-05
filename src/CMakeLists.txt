@@ -172,6 +172,28 @@ if(WIN32)
     # built first and the .NET SDK to pack.
     if(SPARSELIZARD_BUILD_NUGET)
         set(_nuget_stage "${CMAKE_BINARY_DIR}/nuget")
+        set(SPARSELIZARD_NUGET_DEBUG_DIR "" CACHE PATH
+            "Build tree of a sparselizard configured with \
+-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDebugDLL. Its library is packed \
+beside the release one so that an application can build its Debug \
+configuration against the debug C runtime.")
+
+        # A release build with no symbols leaves any stack passing through the
+        # library unreadable, which is most of the point of a Debug
+        # configuration. /Zi costs nothing at run time: the debug information
+        # goes to a .pdb, and /OPT:REF and /OPT:ICF undo the effect /DEBUG
+        # otherwise has on the linker's own optimisations.
+        if(MSVC)
+            target_compile_options(sparselizard PRIVATE $<$<CONFIG:Release>:/Zi>)
+            # Through LINKER:, not bare: with icx the compiler driver is what
+            # gets these, and it forwards to the linker only what is marked.
+            target_link_options(sparselizard PRIVATE
+                $<$<CONFIG:Release>:LINKER:/DEBUG LINKER:/OPT:REF LINKER:/OPT:ICF>)
+            set_target_properties(sparselizard PROPERTIES
+                PDB_NAME sparselizard
+                PDB_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+        endif()
+
         configure_file("${CMAKE_SOURCE_DIR}/cMake/nugetstage.cmake.in"
                        "${CMAKE_BINARY_DIR}/nugetstage.cmake" @ONLY)
         add_custom_target(nuget
