@@ -18,6 +18,8 @@
 
 #include "sparselizard.h"
 
+#include <complex>
+
 
 using namespace sl;
 

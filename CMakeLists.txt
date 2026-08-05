@@ -1,43 +1,77 @@
 # Thanks to S. Matsievskiy for bringing cmake to the project.
 
-cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.21 FATAL_ERROR)
 
 project(Sparselizard LANGUAGES CXX)
 
-set(DEFAULT_BUILD_TYPE "Release")
-set(CMAKE_BUILD_TYPE "${DEFAULT_BUILD_TYPE}" CACHE STRING "Choose the type of build" FORCE)
-
-set(PETSC_PATH "~/SLlibs/petsc" CACHE STRING "Provide the path to the petsc folder")
-set(GMSH_PATH "~/SLlibs/gmsh" CACHE STRING "Provide the path to the gmsh folder")
-set(MPI_PATH "" CACHE STRING "Provide the path to the mpi folder")
-
-# Place library in build folder:
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
-
-# Default flags:
-set(BLAS_FOUND NO)
-set(GMSH_FOUND NO)
-set(METIS_FOUND NO)
-set(MPI_FOUND NO)
-set(MUMPS_FOUND NO)
-set(PETSC_FOUND NO)
-set(SLEPC_FOUND NO)
-
-# Installation definitions
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cMake")
 include(GNUInstallDirs)
-# Aux functions
 include(cMake/functions.cmake)
-include(cMake/SetupBLAS.cmake)
-include(cMake/SetupGMSH.cmake)
-include(cMake/SetupMETIS.cmake)
-include(cMake/SetupMPI.cmake)
-include(cMake/SetupMUMPS.cmake)
-include(cMake/SetupPETSC.cmake)
-include(cMake/SetupSLEPC.cmake)
 
-# Add libsparselizard target
+# --- Options -----------------------------------------------------------------
+#
+# Dependencies are never downloaded or built by this project. Install them with
+# a package manager, or build them separately and point the cache variables at
+# the result:
+#
+#   PETSC_DIR / PETSC_ARCH   an existing PETSc  (also read from the environment)
+#   SLEPC_DIR                an existing SLEPc  (idem)
+#   GMSH_ROOT                an existing Gmsh SDK
+#   BLA_VENDOR               picks the BLAS, e.g. Intel10_64lp_seq for oneMKL
+#
+# BUILD_SHARED_LIBS is the stock CMake switch and selects a shared or a static
+# libsparselizard.
+
+option(SPARSELIZARD_ENABLE_MPI "Build with MPI support" OFF)
+option(SPARSELIZARD_ENABLE_GMSH "Build with the Gmsh API" OFF)
+option(SPARSELIZARD_ENABLE_OPENMP "Build with OpenMP" ON)
+option(SPARSELIZARD_BUILD_SIMULATIONS "Build the simulation targets" ON)
+option(SPARSELIZARD_BUILD_EXAMPLES "Build every example under examples/" OFF)
+option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+
+# Name objects foo.obj rather than foo.cpp.obj. The Ninja and Makefile
+# generators append the source extension by default, which only matters when two
+# sources in one directory share a stem across languages; every source here is
+# .cpp. The Visual Studio generators already replace.
+set(CMAKE_CXX_OUTPUT_EXTENSION_REPLACE 1)
+set(CMAKE_C_OUTPUT_EXTENSION_REPLACE 1)
+
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build" FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+        Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
+# C++ sources going into a shared library must be position independent; on
+# Windows, a shared library also needs an export table, and sparselizard carries
+# no __declspec annotations.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
+# Every executable, and on Windows the shared library too, lands in a single
+# bin/ directory. This is what keeps one copy of sparselizard.dll for all the
+# example binaries: the Windows loader searches the directory holding the
+# executable image, never the current directory, so an example started from its
+# own data directory still finds the library next to its own .exe.
+#
+# On Unix the shared object is a LIBRARY artefact and goes to lib/; the relative
+# RPATH below plays the same role.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+set(SPARSELIZARD_INCLUDE_STAGE_DIR "${CMAKE_BINARY_DIR}/include")
+
+set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+set(CMAKE_INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+
+enable_testing()
+
 add_subdirectory(src)
 
-# Add simulations targets
-add_subdirectory(simulations)
+if(SPARSELIZARD_BUILD_SIMULATIONS)
+    add_subdirectory(simulations)
+endif()
 
+if(SPARSELIZARD_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()

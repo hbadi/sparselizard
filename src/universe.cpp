@@ -1,7 +1,9 @@
 #include "universe.h"
 #include "slepc.h"
 #include <thread>
+#ifdef _OPENMP
 #include <omp.h>
+#endif
 
 
 wallclock universe::globalclock = wallclock();
@@ -53,7 +55,9 @@ int universe::getmaxnumthreads(void)
 
 void universe::setmaxnumthreads(int mnt)
 {
+#ifdef _OPENMP
     omp_set_num_threads(mnt);
+#endif
     maxnumthreads = mnt;
 }
 
