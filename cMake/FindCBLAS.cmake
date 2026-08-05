@@ -18,7 +18,16 @@
 
 include(FindPackageHandleStandardArgs)
 
-find_package(BLAS QUIET)
+# A caller that already knows which BLAS to use says so by setting BLAS_LIBRARIES,
+# and the stock module is skipped. This is what sparselizardConfig.cmake does: the
+# BLAS was resolved once when the library was built, and re-running the search in
+# the application's environment would otherwise need the vendor's own environment
+# script to have been sourced first.
+if(BLAS_LIBRARIES)
+    set(BLAS_FOUND TRUE)
+else()
+    find_package(BLAS QUIET)
+endif()
 
 set(CBLAS_HEADER_HINTS "")
 if(DEFINED ENV{MKLROOT})

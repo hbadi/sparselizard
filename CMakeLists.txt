@@ -2,7 +2,11 @@
 
 cmake_minimum_required(VERSION 3.21 FATAL_ERROR)
 
-project(Sparselizard LANGUAGES CXX)
+# 2022.5.11 is what the library reports at runtime: sl::getversion() returns
+# 202205 and sl::getsubversion() returns 11, the "friendly fox" release. The
+# version is needed here so that the installed package can be version-checked by
+# find_package(sparselizard 2022.5).
+project(Sparselizard VERSION 2022.5.11 LANGUAGES CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cMake")
 include(GNUInstallDirs)

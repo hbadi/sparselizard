@@ -21,8 +21,26 @@ set(SRC_DIR_LIST
 custom_add_library_from_dir(sparselizard "${SRC_DIR_LIST}")
 custom_copy_file(sparselizard "${SRC_DIR_LIST}" "${SPARSELIZARD_INCLUDE_STAGE_DIR}" "*.h")
 
-target_include_directories(sparselizard PUBLIC ${SRC_DIR_LIST})
+foreach(_d IN LISTS SRC_DIR_LIST)
+    target_include_directories(sparselizard PUBLIC $<BUILD_INTERFACE:${_d}>)
+endforeach()
+target_include_directories(sparselizard PUBLIC
+    $<BUILD_INTERFACE:${SPARSELIZARD_INCLUDE_STAGE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/sparselizard>)
 target_compile_features(sparselizard PUBLIC cxx_std_11)
+
+# What an application inherits merely by including sparselizard.h. Stated on the
+# target so that a CMake consumer, the generated property sheet and the NuGet
+# package all take it from one place instead of restating it three times.
+#
+# /Zc:preprocessor  the PetscDefined() macros need a conforming preprocessor;
+#                   MSVC's traditional one mis-expands them, ~120 errors.
+# _CRT_SECURE_NO_WARNINGS  petscstring.h calls strncpy/strncat, which /sdl
+#                   promotes from warning C4996 to an error.
+target_compile_options(sparselizard INTERFACE
+    $<$<CXX_COMPILER_ID:MSVC>:/Zc:preprocessor>)
+target_compile_definitions(sparselizard INTERFACE
+    $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>)
 
 # --- Required dependencies ---------------------------------------------------
 find_package(PETSc REQUIRED)
@@ -67,14 +85,18 @@ if(SPARSELIZARD_ENABLE_OPENMP)
     target_link_libraries(sparselizard PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
-target_include_directories(sparselizard PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(sparselizard PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
 
 # --- Runtime search path ------------------------------------------------------
 # Third-party shared libraries stay where they were installed; only their
 # directories are recorded, so nothing has to be copied or kept in sync. The
 # list feeds the CTest environment and the generated helper script below, and is
 # a cache variable so that an extra directory can be appended by hand.
-set(_rt_dirs ${SLEPc_RUNTIME_DIRS})
+# sparselizard's own shared library first. The examples get away without it
+# because they are built into the same directory and the loader searches the one
+# holding the executable, but a binary built anywhere else does not.
+set(_rt_dirs "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+list(APPEND _rt_dirs ${SLEPc_RUNTIME_DIRS})
 get_filename_component(_cxx_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
 if(IS_DIRECTORY "${_cxx_bin}")
     list(APPEND _rt_dirs "${_cxx_bin}")   # libmmd, svml_dispmd, libifcoremd
@@ -126,10 +148,67 @@ endif()
 file(WRITE "${_env_script}" "${_body}")
 message(STATUS "Runtime helper .... ${_env_script}")
 
-install(TARGETS sparselizard)
+# A Visual Studio project cannot consume a CMake package, so the same
+# information is emitted a second time as an MSBuild property sheet. Adding it
+# through the Property Manager is the whole setup: it carries the include
+# directories, the compiler requirements, the link line and the loader search
+# path. Generated from the variables just computed, so it cannot drift from the
+# CMake target. This is also the file the NuGet package ships as
+# build/native/sparselizard.props.
+if(WIN32)
+    include("${CMAKE_SOURCE_DIR}/cMake/writepropertysheet.cmake")
+    sparselizard_write_property_sheet(
+        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/sparselizard.props"
+        INCLUDE_DIRS "${SPARSELIZARD_INCLUDE_STAGE_DIR};${PETSc_INCLUDE_DIR};${PETSc_CONF_INCLUDE_DIR}"
+        LIBRARY_DIRS "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}"
+        LIBRARIES    "sparselizard.lib"
+        RUNTIME_DIRS "${SPARSELIZARD_RUNTIME_PATHS}")
+    message(STATUS "MSBuild sheet ..... ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/sparselizard.props")
+endif()
+
+# --- Installation and CMake package -------------------------------------------
+# Exporting the target is what lets an application write
+#
+#     find_package(sparselizard REQUIRED)
+#     target_link_libraries(app PRIVATE sparselizard::sparselizard)
+#
+# and inherit the include directories, the PUBLIC dependencies and the compiler
+# requirements above, instead of restating them by hand.
+set(SPARSELIZARD_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/sparselizard")
+
+install(TARGETS sparselizard EXPORT sparselizardTargets
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/sparselizard")
 install(DIRECTORY "${SPARSELIZARD_INCLUDE_STAGE_DIR}/"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/sparselizard"
         FILES_MATCHING PATTERN "*.h")
+install(EXPORT sparselizardTargets
+        NAMESPACE sparselizard::
+        DESTINATION "${SPARSELIZARD_CMAKE_DIR}")
+
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+    "${CMAKE_SOURCE_DIR}/cMake/sparselizardConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/sparselizardConfig.cmake"
+    INSTALL_DESTINATION "${SPARSELIZARD_CMAKE_DIR}")
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/sparselizardConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY SameMinorVersion)
+install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/sparselizardConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/sparselizardConfigVersion.cmake"
+        DESTINATION "${SPARSELIZARD_CMAKE_DIR}")
+# find_dependency(PETSc) in the config file resolves through these.
+install(FILES
+        "${CMAKE_SOURCE_DIR}/cMake/FindPETSc.cmake"
+        "${CMAKE_SOURCE_DIR}/cMake/FindSLEPc.cmake"
+        "${CMAKE_SOURCE_DIR}/cMake/FindCBLAS.cmake"
+        "${CMAKE_SOURCE_DIR}/cMake/FindGMSH.cmake"
+        "${CMAKE_SOURCE_DIR}/cMake/functions.cmake"
+        DESTINATION "${SPARSELIZARD_CMAKE_DIR}/modules")
 
 # --- Configuration summary ---------------------------------------------------
 # Emitted here rather than at the top level: the find_package results live in

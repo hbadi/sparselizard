@@ -1,0 +1,57 @@
+@PACKAGE_INIT@
+
+# PETSc, SLEPc and BLAS are PUBLIC link dependencies of sparselizard: an
+# application that links sparselizard links them too, so they have to be found
+# again here. The Find modules are installed next to this file.
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/modules")
+
+include(CMakeFindDependencyMacro)
+
+# Seed the search with the locations that were used to build this sparselizard.
+# Each is a plain cache entry, so passing -DPETSC_DIR=... on the command line
+# still wins: the values below are a default, not a lock.
+if(NOT PETSC_DIR AND NOT DEFINED ENV{PETSC_DIR})
+    set(PETSC_DIR "@PETSC_DIR@" CACHE PATH "Root of an existing PETSc installation")
+endif()
+if(NOT PETSC_ARCH AND NOT DEFINED ENV{PETSC_ARCH})
+    set(PETSC_ARCH "@PETSC_ARCH@" CACHE STRING "PETSc architecture (empty for a prefix install)")
+endif()
+if(NOT SLEPC_DIR AND NOT DEFINED ENV{SLEPC_DIR})
+    set(SLEPC_DIR "@SLEPC_DIR@" CACHE PATH "Root of an existing SLEPc installation")
+endif()
+if(NOT BLA_VENDOR)
+    set(BLA_VENDOR "@BLA_VENDOR@" CACHE STRING "BLAS implementation to look for")
+endif()
+# The BLAS is recorded rather than searched for again: locating oneMKL normally
+# requires its setvars script to have been sourced, which an application building
+# against an already-built sparselizard has no reason to have done.
+if(NOT BLAS_LIBRARIES)
+    set(BLAS_LIBRARIES "@BLAS_LIBRARIES@" CACHE FILEPATH "BLAS libraries to link")
+endif()
+if(NOT CBLAS_INCLUDE_DIR)
+    set(CBLAS_INCLUDE_DIR "@CBLAS_INCLUDE_DIR@" CACHE PATH "Directory holding the BLAS C interface header")
+endif()
+
+find_dependency(PETSc)
+find_dependency(SLEPc)
+find_dependency(CBLAS)
+
+if(@SPARSELIZARD_ENABLE_MPI@)
+    find_dependency(MPI COMPONENTS CXX)
+endif()
+if(@SPARSELIZARD_ENABLE_GMSH@)
+    find_dependency(GMSH)
+endif()
+if(@SPARSELIZARD_ENABLE_OPENMP@)
+    find_dependency(OpenMP COMPONENTS CXX)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/sparselizardTargets.cmake")
+
+# The directories the loader has to search to start a linked binary. Neither
+# CMake nor the linker can express this on Windows, where there is no RPATH, so
+# it is handed to the application as a variable and also written to the helper
+# script and the property sheet installed beside this file.
+set(sparselizard_RUNTIME_DIRS "@SPARSELIZARD_RUNTIME_PATHS@")
+
+check_required_components(sparselizard)
