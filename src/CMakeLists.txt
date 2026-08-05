@@ -164,6 +164,23 @@ if(WIN32)
         LIBRARIES    "sparselizard.lib"
         RUNTIME_DIRS "${SPARSELIZARD_RUNTIME_PATHS}")
     message(STATUS "MSBuild sheet ..... ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/sparselizard.props")
+
+    # --- NuGet package --------------------------------------------------------
+    # "cmake --build . --target nuget" lays out and packs a native NuGet, whose
+    # whole point is that consuming sparselizard from Visual Studio becomes a
+    # package reference and nothing else. Off by default: it needs the library
+    # built first and the .NET SDK to pack.
+    if(SPARSELIZARD_BUILD_NUGET)
+        set(_nuget_stage "${CMAKE_BINARY_DIR}/nuget")
+        configure_file("${CMAKE_SOURCE_DIR}/cMake/nugetstage.cmake.in"
+                       "${CMAKE_BINARY_DIR}/nugetstage.cmake" @ONLY)
+        add_custom_target(nuget
+            COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_BINARY_DIR}/nugetstage.cmake"
+            DEPENDS sparselizard
+            COMMENT "Staging the sparselizard NuGet package"
+            VERBATIM)
+        message(STATUS "NuGet target ...... cmake --build ${CMAKE_BINARY_DIR} --target nuget")
+    endif()
 endif()
 
 # --- Installation and CMake package -------------------------------------------

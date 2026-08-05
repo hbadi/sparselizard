@@ -32,6 +32,7 @@ option(SPARSELIZARD_ENABLE_OPENMP "Build with OpenMP" ON)
 option(SPARSELIZARD_BUILD_SIMULATIONS "Build the simulation targets" ON)
 option(SPARSELIZARD_BUILD_EXAMPLES "Build every example under examples/" OFF)
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+option(SPARSELIZARD_BUILD_NUGET "Add a 'nuget' target packing a native NuGet (Windows)" OFF)
 
 # Name objects foo.obj rather than foo.cpp.obj. The Ninja and Makefile
 # generators append the source extension by default, which only matters when two
