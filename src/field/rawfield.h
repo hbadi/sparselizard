@@ -30,7 +30,6 @@
 #include "coefmanager.h"
 #include "universe.h"
 #include "expression.h"
-#include "sl.h"
 #include "harmonic.h"
 #include "densemat.h"
 #include "element.h"
@@ -57,6 +56,7 @@ class rawvec;
 class expression;
 class elementselector;
 class rawspanningtree;
+class dofmanager;
 
 class rawfield : public std::enable_shared_from_this<rawfield>
 {

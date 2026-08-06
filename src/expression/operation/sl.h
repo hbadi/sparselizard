@@ -30,6 +30,7 @@ class parameter;
 class formulation;
 class shape;
 class dofmanager;
+class rawfield;
 
 namespace sl
 {
