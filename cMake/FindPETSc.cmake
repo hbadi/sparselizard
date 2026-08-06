@@ -12,12 +12,24 @@
 #   PETSc_FOUND
 #   PETSc::PETSc      imported target carrying includes and link interface
 #   PETSc_VERSION
+#   PETSC_VARIANT     the variant that was selected, empty for a plain install
 
 include(FindPackageHandleStandardArgs)
 include("${CMAKE_CURRENT_LIST_DIR}/functions.cmake")
 
 set(PETSC_DIR "$ENV{PETSC_DIR}" CACHE PATH "Root of an existing PETSc installation")
 set(PETSC_ARCH "$ENV{PETSC_ARCH}" CACHE STRING "PETSc architecture (empty for a prefix install)")
+
+# Some distributions ship one PETSc per scalar type and parallel model rather
+# than one library, each with its own headers, its own import library and its
+# own .pc. MSYS2 names them <scalar><parallel>o, where the scalar is s, d, c or
+# z for real single, real double, complex single or complex double, and the
+# parallel model is m for MPI, s for sequential and t for OpenMP. sparselizard
+# needs a real double one; among those, only the sequential and OpenMP variants
+# exist on every platform, since the MPI ones are absent on aarch64.
+set(PETSC_VARIANT "$ENV{PETSC_VARIANT}" CACHE STRING
+    "PETSc variant to use when the installation ships several, e.g. dto")
+set(_petsc_preferred_variants dto dso dmo)
 
 # --- 1. pkg-config -----------------------------------------------------------
 find_package(PkgConfig QUIET)
@@ -29,7 +41,29 @@ if(PkgConfig_FOUND)
         endif()
         set(ENV{PKG_CONFIG_PATH} "${PETSC_DIR}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
     endif()
-    pkg_check_modules(PC_PETSC QUIET PETSc)
+
+    # An explicit variant is taken as given and nothing else is tried, so that a
+    # typo fails here rather than silently linking a different scalar type.
+    if(PETSC_VARIANT)
+        set(_petsc_modules "petsc-${PETSC_VARIANT}")
+    else()
+        set(_petsc_modules PETSc petsc)
+        foreach(_v IN LISTS _petsc_preferred_variants)
+            list(APPEND _petsc_modules "petsc-${_v}")
+        endforeach()
+    endif()
+
+    foreach(_m IN LISTS _petsc_modules)
+        pkg_check_modules(PC_PETSC QUIET "${_m}")
+        if(PC_PETSC_FOUND)
+            if(NOT PETSC_VARIANT AND _m MATCHES "^petsc-(.+)$")
+                set(PETSC_VARIANT "${CMAKE_MATCH_1}" CACHE STRING
+                    "PETSc variant to use when the installation ships several, e.g. dto" FORCE)
+                message(STATUS "PETSc ships several variants, selected '${PETSC_VARIANT}'")
+            endif()
+            break()
+        endif()
+    endforeach()
 endif()
 
 # --- 2. headers --------------------------------------------------------------

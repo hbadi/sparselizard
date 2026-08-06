@@ -59,18 +59,31 @@ else()
     # slmpi.cpp includes <mpi.h> unconditionally. A PETSc configured with
     # --with-mpi=0 ships the MPIUNI stub for exactly this case; without it the
     # header has to come from somewhere else.
+    #
+    # Where the stub sits depends on the installation. An in-place PETSc puts it
+    # under PETSC_DIR; a packaged one puts it beside petsc.h, which for a
+    # distribution shipping several variants means the directory common to them
+    # rather than the variant's own. Both are offered, the second derived from
+    # where petsc.h was actually found.
+    #
+    # NO_DEFAULT_PATH is what makes this safe. An MPI implementation installed
+    # alongside owns <mpi.h> too, MS-MPI on MSYS2 for one, and picking that up
+    # while linking a PETSc built with MPIUNI compiles cleanly and then does not
+    # work.
     find_path(MPIUNI_INCLUDE_DIR
         NAMES mpi.h
-        HINTS "${PETSC_DIR}/include/petsc/mpiuni"
+        HINTS "${PETSC_DIR}/include/petsc/mpiuni" "${PETSc_INCLUDE_DIR}/petsc/mpiuni"
         NO_DEFAULT_PATH)
     if(MPIUNI_INCLUDE_DIR)
-        target_include_directories(sparselizard PUBLIC ${MPIUNI_INCLUDE_DIR})
+        # Ahead of everything else, for the same reason.
+        target_include_directories(sparselizard BEFORE PUBLIC ${MPIUNI_INCLUDE_DIR})
         message(STATUS "MPI disabled, using the PETSc MPIUNI stub at ${MPIUNI_INCLUDE_DIR}")
     else()
         message(WARNING
-            "MPI is disabled and no MPIUNI stub was found under PETSC_DIR. "
-            "src/slmpi.cpp includes <mpi.h> and will not compile. Either enable "
-            "SPARSELIZARD_ENABLE_MPI or point PETSC_DIR at a PETSc built with --with-mpi=0.")
+            "MPI is disabled and no MPIUNI stub was found next to the PETSc headers "
+            "nor under PETSC_DIR. src/slmpi.cpp includes <mpi.h> and will not "
+            "compile. Either enable SPARSELIZARD_ENABLE_MPI or point PETSC_DIR at a "
+            "PETSc built with --with-mpi=0.")
     endif()
 endif()
 

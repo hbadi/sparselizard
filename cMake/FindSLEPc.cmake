@@ -26,7 +26,22 @@ if(PkgConfig_FOUND)
         endif()
         set(ENV{PKG_CONFIG_PATH} "${SLEPC_DIR}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
     endif()
-    pkg_check_modules(PC_SLEPC QUIET SLEPc)
+
+    # SLEPc is built against one PETSc, so where PETSc ships several variants
+    # SLEPc ships the matching ones under the same names. FindPETSc has already
+    # run and settled PETSC_VARIANT; follow it rather than choose again, since a
+    # SLEPc from one variant over a PETSc from another links but does not work.
+    set(_slepc_modules SLEPc slepc)
+    if(PETSC_VARIANT)
+        set(_slepc_modules "slepc-${PETSC_VARIANT}")
+    endif()
+
+    foreach(_m IN LISTS _slepc_modules)
+        pkg_check_modules(PC_SLEPC QUIET "${_m}")
+        if(PC_SLEPC_FOUND)
+            break()
+        endif()
+    endforeach()
 endif()
 
 find_path(SLEPc_INCLUDE_DIR
