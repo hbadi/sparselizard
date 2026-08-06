@@ -33,7 +33,13 @@ class universe
 
         static wallclock globalclock;
 
+        // The direct solver PETSc is asked for. MUMPS by default, which PETSc
+        // only provides when it was configured with it; several distributions
+        // ship one that was not. Read it through getsolvertype(), which falls
+        // back to a solver that is always there rather than letting the solve
+        // fail.
         static MatSolverType solvertype;
+        static MatSolverType getsolvertype(void);
 
         static int mynumrawmeshes;
         static void addtorawmeshcounter(int val);

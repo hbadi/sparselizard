@@ -1610,7 +1610,7 @@ vec sl::solve(mat A, vec b, std::string soltype, bool diagscaling)
             PCSetType(pc,PCLU);
         if (soltype == "cholesky")
             PCSetType(pc,PCCHOLESKY);
-        PCFactorSetMatSolverType(pc, universe::solvertype);
+        PCFactorSetMatSolverType(pc, universe::getsolvertype());
     }
 
     KSPSolve(*ksp, bpetsc, solpetsc);
@@ -1713,7 +1713,7 @@ densemat sl::solve(mat A, densemat b, std::string soltype)
             PCSetType(pc,PCLU);
         if (soltype == "cholesky")
             PCSetType(pc,PCCHOLESKY);
-        PCFactorSetMatSolverType(pc, universe::solvertype);
+        PCFactorSetMatSolverType(pc, universe::getsolvertype());
         PCSetUp(pc);
     }
     else

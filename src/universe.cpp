@@ -10,6 +10,37 @@ wallclock universe::globalclock = wallclock();
 
 MatSolverType universe::solvertype = "mumps";
 
+MatSolverType universe::getsolvertype(void)
+{
+    // Resolved once: the set of registered solvers does not change during a run,
+    // and asking PETSc on every factorisation would be wasteful.
+    static MatSolverType resolved = NULL;
+    if (resolved != NULL)
+        return resolved;
+
+    resolved = solvertype;
+
+    // MatSolverTypeGet reports whether the solver was registered at all, which
+    // is what distinguishes a PETSc built without it from one that has it but
+    // cannot apply it to this matrix. Asking for it directly is the only way to
+    // know: the alternative is letting MatGetFactor() fail inside the solve,
+    // where the error surfaces as a nan rather than as a diagnostic.
+    PetscBool hastype = PETSC_FALSE, hasmattype = PETSC_FALSE;
+    MatSolverTypeGet(solvertype, MATSEQAIJ, MAT_FACTOR_LU, &hastype, &hasmattype, NULL);
+
+    if (hastype == PETSC_FALSE)
+    {
+        // Silently, and deliberately. A build against a PETSc without the
+        // requested solver is a perfectly usable build; PETSc's own LU is
+        // always registered. It is slower and strictly sequential, which is
+        // worth knowing but not worth a message on every run: the choice is
+        // made by whoever installed PETSc, not by whoever runs this.
+        resolved = MATSOLVERPETSC;
+    }
+
+    return resolved;
+}
+
 int universe::mynumrawmeshes = 0;
 
 void universe::addtorawmeshcounter(int val)
